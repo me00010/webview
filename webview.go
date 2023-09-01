@@ -50,6 +50,16 @@ const (
 	HintMax = C.WEBVIEW_HINT_MAX
 )
 
+type BindCallbackResult struct {
+	// Error is an error returned by the callback. If error is not nil - the
+	// result of the callback is ignored.
+	Error error
+
+	// Value is a value returned by the callback. If error is not nil - the
+	// result of the callback is ignored.
+	Value interface{}
+}
+
 type WebView interface {
 
 	// Run runs the main loop until it's terminated. After this function exits -
@@ -108,7 +118,8 @@ type WebView interface {
 	// JavaScript function.
 	//
 	// f must be a function
-	// f must return either value and error or just error
+	// f can return either value and error or just error
+	// f can return a channel of BindCallbackResult as the value
 	Bind(name string, f interface{}) error
 }
 
@@ -222,21 +233,33 @@ func _webviewBindingGoCallback(w C.webview_t, id *C.char, req *C.char, index uin
 	m.Lock()
 	f := bindings[uintptr(index)]
 	m.Unlock()
-	jsString := func(v interface{}) string { b, _ := json.Marshal(v); return string(b) }
-	status, result := 0, ""
-	if res, err := f(C.GoString(id), C.GoString(req)); err != nil {
-		status = -1
-		result = jsString(err.Error())
-	} else if b, err := json.Marshal(res); err != nil {
-		status = -1
-		result = jsString(err.Error())
-	} else {
-		status = 0
-		result = string(b)
-	}
-	s := C.CString(result)
-	defer C.free(unsafe.Pointer(s))
-	C.webview_return(w, id, C.int(status), s)
+
+	// retain a reference to the id and params strings
+	reqId := C.GoString(id)
+	reqParams := C.GoString(req)
+
+	// run the callback in a separate goroutine
+	go func() {
+		jsString := func(v interface{}) string { b, _ := json.Marshal(v); return string(b) }
+
+		status, result := 0, ""
+		if res, err := f(reqId, reqParams); err != nil {
+			status = -1
+			result = jsString(err.Error())
+		} else if b, err := json.Marshal(res); err != nil {
+			status = -1
+			result = jsString(err.Error())
+		} else {
+			status = 0
+			result = string(b)
+		}
+
+		cId := C.CString(reqId)
+		defer C.free(unsafe.Pointer(cId))
+		s := C.CString(result)
+		defer C.free(unsafe.Pointer(s))
+		C.webview_return(w, cId, C.int(status), s)
+	}()
 }
 
 func (w *webview) Bind(name string, f interface{}) error {
@@ -287,6 +310,25 @@ func (w *webview) Bind(name string, f interface{}) error {
 					return nil, res[0].Interface().(error)
 				}
 				return nil, nil
+			} else if res[0].Type().Kind() == reflect.Chan {
+				if res[0].Type().Elem() != reflect.TypeOf(BindCallbackResult{}) {
+					return nil, errors.New("channel must be of type CallbackResult")
+				}
+
+				// Wait for the channel to receive a value
+				val, ok := res[0].Recv()
+
+				if !ok {
+					return nil, errors.New("channel closed")
+				}
+
+				callbackResult := val.Interface().(BindCallbackResult)
+
+				if callbackResult.Error != nil {
+					return nil, callbackResult.Error
+				}
+
+				return callbackResult.Value, nil
 			}
 			return res[0].Interface(), nil
 		case 2:
