@@ -49,6 +49,23 @@ static void test_c_api() {
   webview_destroy(w);
 }
 
+// =============================================================================
+// TEST: use C API to create a window, hide the frame, run app and terminate it.
+// =============================================================================
+static void test_c_api_no_frame() {
+  webview_t w;
+  w = webview_create(false, nullptr);
+  webview_set_size(w, 480, 320, 0);
+  webview_set_title(w, "Test");
+  webview_set_html(w, "set_html ok");
+  webview_hide_frame(w);
+  webview_navigate(w, "data:text/plain,navigate%20ok");
+  webview_dispatch(w, cb_assert_arg, (void *)"arg");
+  webview_dispatch(w, cb_terminate, nullptr);
+  webview_run(w);
+  webview_destroy(w);
+}
+
 // =================================================================
 // TEST: use C API to test binding and unbinding.
 // =================================================================
@@ -473,6 +490,7 @@ int main(int argc, char *argv[]) {
   std::unordered_map<std::string, std::function<void()>> all_tests = {
       {"terminate", test_terminate},
       {"c_api", test_c_api},
+      {"c_api_no_frame", test_c_api_no_frame},
       {"c_api_bind", test_c_api_bind},
       {"c_api_version", test_c_api_version},
       {"bidir_comms", test_bidir_comms},

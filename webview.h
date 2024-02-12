@@ -169,6 +169,9 @@ WEBVIEW_API void *webview_get_native_handle(webview_t w,
 // Updates the title of the native window. Must be called from the UI thread.
 WEBVIEW_API void webview_set_title(webview_t w, const char *title);
 
+// Hides the native window frame
+WEBVIEW_API void webview_hide_frame(webview_t w);
+
 // Window size hints
 #define WEBVIEW_HINT_NONE 0  // Width and height are default size
 #define WEBVIEW_HINT_MIN 1   // Width and height are minimum bounds
@@ -935,6 +938,7 @@ public:
     webkit_dmabuf::apply_webkit_dmabuf_workaround();
     // Initialize webview widget
     m_webview = webkit_web_view_new();
+
     WebKitUserContentManager *manager =
         webkit_web_view_get_user_content_manager(WEBKIT_WEB_VIEW(m_webview));
     g_signal_connect(manager, "script-message-received::external",
@@ -982,6 +986,8 @@ public:
                     new std::function<void()>(f),
                     [](void *f) { delete static_cast<dispatch_fn_t *>(f); });
   }
+
+  void hide_frame() { gtk_window_set_decorated(GTK_WINDOW(m_window), false); }
 
   void set_title(const std::string &title) {
     gtk_window_set_title(GTK_WINDOW(m_window), title.c_str());
@@ -1178,6 +1184,7 @@ private:
 enum NSBackingStoreType : NSUInteger { NSBackingStoreBuffered = 2 };
 
 enum NSWindowStyleMask : NSUInteger {
+  NSWindowStyleMaskBorderless = 0,
   NSWindowStyleMaskTitled = 1,
   NSWindowStyleMaskClosable = 2,
   NSWindowStyleMaskMiniaturizable = 4,
@@ -1208,8 +1215,8 @@ inline id operator"" _str(const char *s, std::size_t) {
 class cocoa_wkwebview_engine {
 public:
   cocoa_wkwebview_engine(bool debug, void *window)
-      : m_debug{debug}, m_window{static_cast<id>(window)}, m_owns_window{
-                                                               !window} {
+      : m_debug{debug}, m_window{static_cast<id>(window)},
+        m_owns_window{!window}, m_hide_frame{false} {
     auto app = get_shared_application();
     // See comments related to application lifecycle in create_app_delegate().
     if (!m_owns_window) {
@@ -1251,6 +1258,7 @@ public:
                        delete f;
                      }));
   }
+  void hide_frame() { m_hide_frame = true; }
   void set_title(const std::string &title) {
     objc::msg_send<void>(m_window, "setTitle:"_sel,
                          objc::msg_send<id>("NSString"_cls,
@@ -1258,8 +1266,10 @@ public:
                                             title.c_str()));
   }
   void set_size(int width, int height, int hints) {
+    auto window_border_style =
+        m_hide_frame ? NSWindowStyleMaskBorderless : NSWindowStyleMaskTitled;
     auto style = static_cast<NSWindowStyleMask>(
-        NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+        window_border_style | NSWindowStyleMaskClosable |
         NSWindowStyleMaskMiniaturizable);
     if (hints != WEBVIEW_HINT_FIXED) {
       style =
@@ -1483,7 +1493,8 @@ private:
     // Main window
     if (m_owns_window) {
       m_window = objc::msg_send<id>("NSWindow"_cls, "alloc"_sel);
-      auto style = NSWindowStyleMaskTitled;
+      auto style =
+          m_hide_frame ? NSWindowStyleMaskBorderless : NSWindowStyleMaskTitled;
       m_window = objc::msg_send<id>(
           m_window, "initWithContentRect:styleMask:backing:defer:"_sel,
           CGRectMake(0, 0, 0, 0), style, NSBackingStoreBuffered, NO);
@@ -1597,6 +1608,7 @@ private:
   id m_webview;
   id m_manager;
   bool m_owns_window;
+  bool m_hide_frame;
 };
 
 } // namespace detail
@@ -2784,6 +2796,12 @@ public:
     PostMessageW(m_message_window, WM_APP, 0, (LPARAM) new dispatch_fn_t(f));
   }
 
+  void hide_frame() {
+    LONG current_style = GetWindowLong(m_window, GWL_STYLE);
+    current_style &= ~(WS_CAPTION | WS_SIZEBOX | WS_BORDER | WS_THICKFRAME);
+    SetWindowLong(m_window, GWL_STYLE, current_style);
+  }
+
   void set_title(const std::string &title) {
     SetWindowTextW(m_window, widen_string(title).c_str());
   }
@@ -3201,8 +3219,12 @@ WEBVIEW_API void webview_set_title(webview_t w, const char *title) {
   static_cast<webview::webview *>(w)->set_title(title);
 }
 
-WEBVIEW_API void webview_set_size(webview_t w, int width, int height,
-                                  int hints) {
+WEBVIEW_API void webview_hide_frame(webview_t w) {
+  static_cast<webview::webview *>(w)->hide_frame();
+}
+
+WEBVIEW_API
+void webview_set_size(webview_t w, int width, int height, int hints) {
   static_cast<webview::webview *>(w)->set_size(width, height, hints);
 }
 
