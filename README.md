@@ -16,7 +16,7 @@ It supports two-way JavaScript bindings (to call JavaScript from C/C++ and to ca
 
 Platform | Technologies
 -------- | ------------
-Linux    | [GTK 3][gtk], [WebKitGTK][webkitgtk]
+Linux    | [GTK][gtk], [WebKitGTK][webkitgtk]
 macOS    | Cocoa, [WebKit][webkit]
 Windows  | [Windows API][win32-api], [WebView2][ms-webview2]
 
@@ -27,6 +27,8 @@ The most up-to-date documentation is right in the source code. Improving the doc
 ## Prerequisites
 
 Your compiler must support minimum C++11 except for platforms that require a more modern version.
+
+This project uses CMake and Ninja, and while recommended for your convenience, these tools aren't required for using the library.
 
 ### Linux and BSD
 
@@ -46,8 +48,8 @@ The [GTK][gtk] and [WebKitGTK][webkitgtk] libraries are required for development
     * Production: `apt install libgtk-3-0 libwebkit2gtk-4.0-37`
 * Fedora:
   * WebKitGTK 6.0, GTK 4:
-    * Development: `dnf install gtk3-devel webkitgtk6.0-devel`
-    * Production: `dnf install gtk3 webkitgtk6.0`
+    * Development: `dnf install gtk4-devel webkitgtk6.0-devel`
+    * Production: `dnf install gtk4 webkitgtk6.0`
   * WebKitGTK 4.1, GTK 3, libsoup 3:
     * Development: `dnf install gtk3-devel webkit2gtk4.1-devel`
     * Production: `dnf install gtk3 webkit2gtk4.1`
@@ -66,7 +68,7 @@ The [GTK][gtk] and [WebKitGTK][webkitgtk] libraries are required for development
 
 Your compiler must support C++14 and we recommend to pair it with an up-to-date Windows 10 SDK.
 
-For Visual C++ we recommend Visual Studio 2022 or later. We have a [separate section for MinGW-w64](#mingw-w64-requirements).
+For Visual C++ we recommend Visual Studio 2022 or later. There are some [requirements when using MinGW-w64](#mingw-w64-requirements).
 
 Developers and end-users must have the [WebView2 runtime][ms-webview2-rt] installed on their system for any version of Windows before Windows 11.
 
@@ -74,124 +76,82 @@ Developers and end-users must have the [WebView2 runtime][ms-webview2-rt] instal
 
 If you are a developer of this project then please go to the [development section](#development).
 
-Instructions here are written for GCC when compiling C/C++ code using Unix-style command lines, and assumes that multiple commands are executed in the same shell session. Command lines for Windows use syntax specific to the Command shell but you can use any shell such as PowerShell as long as you adapt the commands accordingly. See the [MinGW-w64 requirements](#mingw-w64-requirements) when building on Windows.
-
-You will have a working app but you are encouraged to explore the [available examples][examples] and try the ones that go beyond the mere basics.
+You will have a working app made with C++ and CMake, but you are encouraged to explore the [available examples][examples].
 
 Start with creating a new directory structure for your project:
 
 ```sh
 mkdir my-project && cd my-project
-mkdir build libs "libs/webview"
 ```
 
-### Windows Preparation
-
-The [WebView2 SDK][ms-webview2-sdk] is required when compiling programs:
-
-```bat
-mkdir libs\webview2
-curl -sSL "https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2" | tar -xf - -C libs\webview2
-```
-
-If you wish to use the official WebView2 loader (`WebView2Loader.dll`) then grab a copy of the DLL (replace `x64` with your target architecture):
-
-```bat
-copy /Y libs\webview2\build\native\x64\WebView2Loader.dll build
-```
-
-> **Note:** See the [WebView2 loader section](#ms-webview2-loader) for more options.
-
-### C/C++ Preparation
-
-Fetch the webview library:
+Save the example files into your project directory:
 
 ```sh
-curl -sSLo "libs/webview/webview.h" "https://raw.githubusercontent.com/webview/webview/master/webview.h"
-curl -sSLo "libs/webview/webview.cc" "https://raw.githubusercontent.com/webview/webview/master/webview.cc"
+curl -sSLo .gitignore "https://raw.githubusercontent.com/webview/webview/master/examples/cmake/.gitignore"
+curl -sSLo CMakeLists.txt "https://raw.githubusercontent.com/webview/webview/master/examples/cmake/CMakeLists.txt"
+curl -sSLo main.cc "https://raw.githubusercontent.com/webview/webview/master/examples/cc/basic/src/main.cc"
 ```
 
-### Getting Started with C++
-
-Save the basic C++ example into your project directory:
+Build the project:
 
 ```sh
-curl -sSLo basic.cc "https://raw.githubusercontent.com/webview/webview/master/examples/basic.cc"
+cmake -G Ninja -B build -S .
+cmake --build build
 ```
 
-Build and run the example:
+Find the executable in the `build/bin` directory.
 
-```sh
-# Linux
-g++ basic.cc -std=c++11 -Ilibs/webview $(pkg-config --cflags --libs gtk+-3.0 webkit2gtk-4.1) -o build/basic && ./build/basic
-# macOS
-g++ basic.cc -std=c++11 -Ilibs/webview -framework WebKit -o build/basic && ./build/basic
-# Windows/MinGW
-g++ basic.cc -std=c++14 -mwindows -Ilibs/webview -Ilibs/webview2/build/native/include -ladvapi32 -lole32 -lshell32 -lshlwapi -luser32 -lversion -o build/basic.exe && "build/basic.exe"
-```
+## Customization
 
-#### Bonus for Visual C++
+### CMake Targets
 
-Build a C++ example:
+The following CMake targets are available:
 
-```bat
-cl basic.cc /std:c++14 /EHsc /Fobuild\ ^
-    /I libs\webview ^
-    /I libs\webview2\build\native\include ^
-    /link /OUT:build\basic.exe
-```
+Name               | Description
+----               | -----------
+`webview::headers` | Headers only for C++.
+`webview::shared`  | Shared library for C.
+`webview::static`  | Static library for C.
 
-### Getting Started with C
+### CMake Options
 
-Save the basic C example into your project directory:
+These CMake options can be used when building the webview project standalone or building it as part of your project (e.g. with FetchContent).
 
-```sh
-curl -sSLo basic.c "https://raw.githubusercontent.com/webview/webview/master/examples/basic.c"
-```
+Option                            | Description
+------                            | -----------
+`WEBVIEW_BUILD_DOCS`              | Build documentation
+`WEBVIEW_BUILD_TESTS`             | Build tests
+`WEBVIEW_BUILD_EXAMPLES`          | Build examples
+`WEBVIEW_INSTALL_DOCS`            | Install documentation
+`WEBVIEW_INSTALL_TARGETS`         | Install targets
+`WEBVIEW_BUILD_PACKAGE`           | Build package
+`WEBVIEW_BUILD_SHARED_LIBRARY`    | Build shared libraries
+`WEBVIEW_BUILD_STATIC_LIBRARY`    | Build static libraries
+`WEBVIEW_USE_COMPAT_MINGW`        | Use compatibility helper for MinGW
+`WEBVIEW_USE_STATIC_MSVC_RUNTIME` | Use static runtime library (MSVC)
+`WEBVIEW_ENABLE_CHECKS`           | Enable checks
+`WEBVIEW_ENABLE_CLANG_TIDY`       | Enable clang-tidy
 
-Build the library and example, then run it:
+### Package Consumer Options
 
-```sh
-# Linux
-g++ -c libs/webview/webview.cc -std=c++11 -DWEBVIEW_STATIC $(pkg-config --cflags gtk+-3.0 webkit2gtk-4.1) -o build/webview.o
-gcc -c basic.c -std=c99 -Ilibs/webview -o build/basic.o
-g++ build/basic.o build/webview.o $(pkg-config --libs gtk+-3.0 webkit2gtk-4.1) -o build/basic && build/basic
-# macOS
-g++ -c libs/webview/webview.cc -std=c++11 -DWEBVIEW_STATIC -o build/webview.o
-gcc -c basic.c -std=c99 -Ilibs/webview -o build/basic.o
-g++ build/basic.o build/webview.o -framework WebKit -o build/basic && build/basic
-# Windows/MinGW
-g++ -c libs/webview/webview.cc -std=c++14 -DWEBVIEW_STATIC -Ilibs/webview2/build/native/include -o build/webview.o
-gcc -c basic.c -std=c99 -Ilibs/webview -o build/basic.o
-g++ build/basic.o build/webview.o -mwindows -ladvapi32 -lole32 -lshell32 -lshlwapi -luser32 -lversion -o build/basic.exe && "build/basic.exe"
-```
+These options can be used when when using the webview CMake package.
 
-#### Bonus for Visual C++
+#### Linux-specific Options
 
-Build a shared library:
+Option                          | Description
+------                          | -----------
+`WEBVIEW_WEBKITGTK_API`         | WebKitGTK API to interface with, e.g. `6.0`, `4.1` (recommended) or `4.0`. This will also automatically decide the GTK version. Uses the latest recommended API by default if available, or the latest known and available API. Note that there can be major differences between API versions that can affect feature availability. See webview API documentation for details on feature availability.
 
-```bat
-cl libs\webview\webview.cc /std:c++14 /EHsc /Fobuild\ ^
-    /D WEBVIEW_BUILD_SHARED ^
-    /I libs\webview ^
-    /I libs\webview2\build\native\include ^
-    /link /DLL /OUT:build\webview.dll
-```
+#### Windows-specific Options
 
-Build a C example using the shared library:
-
-```bat
-cl basic.c build\webview.lib /EHsc /Fobuild\ ^
-    /D WEBVIEW_SHARED ^
-    /I libs\webview ^
-    /link /OUT:build\basic.exe
-```
-
-### More Examples
-
-The examples shown here are mere pieces of a bigger picture so we encourage you to try [other examples][examples] and explore on your own—you can follow the same procedure. Please [get in touch][issues-new] if you find any issues.
+Option                          | Description
+------                          | -----------
+`WEBVIEW_MSWEBVIEW2_VERSION`    | MS WebView2 version, e.g. `1.0.1150.38`.
+`WEBVIEW_USE_BUILTIN_MSWEBVIEW2`| Use built-in MS WebView2.
 
 ### Compile-time Options
+
+These options can be specified as preprocessor macros to modify the build, but are not needed when using CMake.
 
 #### C API Linkage
 
@@ -206,9 +166,16 @@ Name                   | Description
 
 Name                   | Description
 ----                   | -----------
-`WEBVIEW_GTK`          | Compile with GTK/WebKitGTK.
-`WEBVIEW_COCOA`        | Compile with Cocoa/WebKit.
-`WEBVIEW_EDGE`         | Compile with Win32/WebView2.
+`WEBVIEW_GTK`          | Compile the GTK/WebKitGTK backend.
+`WEBVIEW_COCOA`        | Compile the Cocoa/WebKit backend.
+`WEBVIEW_EDGE`         | Compile the Win32/WebView2 backend.
+
+#### Windows-specific Options
+
+Option                            | Description
+------                            | -----------
+`WEBVIEW_MSWEBVIEW2_BUILTIN_IMPL` | Enables (`1`) or disables (`0`) the built-in implementation of the WebView2 loader. Enabling this avoids the need for `WebView2Loader.dll` but if the DLL is present then the DLL takes priority. This option is enabled by default.
+`WEBVIEW_MSWEBVIEW2_EXPLICIT_LINK`| Enables (`1`) or disables (`0`) explicit linking of `WebView2Loader.dll`. Enabling this avoids the need for import libraries (`*.lib`). This option is enabled by default if `WEBVIEW_MSWEBVIEW2_BUILTIN_IMPL` is enabled.
 
 ## App Distribution
 
@@ -288,59 +255,45 @@ Here are some of the noteworthy ways our implementation of the loader differs fr
 * Does not support configuring WebView2 using environment variables such as `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER`.
 * Microsoft Edge Insider (preview) channels are not supported.
 
-The following [compile-time options](#compile-time-options) can be used to change how the library integrates the WebView2 loader:
-
-* `WEBVIEW_MSWEBVIEW2_BUILTIN_IMPL=<1|0>` - Enables or disables the built-in implementation of the WebView2 loader. Enabling this avoids the need for `WebView2Loader.dll` but if the DLL is present then the DLL takes priority. This option is enabled by default.
-* `WEBVIEW_MSWEBVIEW2_EXPLICIT_LINK=<1|0>` - Enables or disables explicit linking of `WebView2Loader.dll`. Enabling this avoids the need for import libraries (`*.lib`). This option is enabled by default if `WEBVIEW_MSWEBVIEW2_BUILTIN_IMPL` is enabled.
+[Customization options](#Customization) can be used to change how the library integrates the WebView2 loader.
 
 ## Development
 
-To build the library, examples and run tests, use one of the builds scripts in the `script` directory:
+This project uses the CMake build system.
 
-* `build.sh`:
-  * On Unix-based systems.
-  * On Windows in a Unix-like environment such as MSYS2.
+### Building
 
-* `build.bat`:
-  * On Windows when building with Visual C++.
+```
+cmake -G "Ninja Multi-Config" -B build -S .
+cmake --build build --config CONFIG
+```
 
-You can specify individual tasks on the command line for these scripts:
+Replace `CONFIG` with one of `Debug`, `Release`, or `Profile`. Use `Profile` to enable code coverage (GCC/Clang).
 
-Task       | Description
----------- | ---------------------------------------
-`info`     | Displays information.
-`clean`    | Cleans the build directory.
-`format`   | Reformats code.
-`deps`     | Fetches dependencies.
-`check`    | Runs checks.
-`build`    | Builds the library, examples and tests.
-`test`     | Runs tests.
+Run tests:
 
-Additionally, the scripts accept the following environment variables.
+```
+ctest --test-dir build --build-config CONFIG
+```
 
-Both scripts:
+Generate test coverage report:
 
-Variable     | Description
------------- | ---------------------------------------------------------
-`CI`         | Changes behavior in CI environments (more strict).
-`TARGET_ARCH`| Target architecture for cross-compilation (`x64`, `x86`).
-`BUILD_DIR`  | Overrides the path of the build directory.
+```
+gcovr
+```
 
-Only `build.sh`:
-
-Variable        | Description
---------------- | --------------------------------------------------------------
-`HOST_OS`       | Host operating system (`linux`, `macos`, `windows`).
-`TARGET_OS`     | Target operating system for cross-compilation (see `HOST_OS`).
-`CC`            | C compiler executable.
-`CXX`           | C++ compiler executable.
-`LIB_PREFIX`    | Library name prefix.
-`PKGCONFIG`     | Alternative `pkgconfig` executable.
-`WEBKITGTK_API` | WebKitGTK API to interface with, e.g. `0x400` for 4.0, `0x401` for 4.1 or `0x600` for 6.0. This will also automatically decide the GTK version. Uses the latest known and available API by default.
+Find the coverage report in `build/coverage`:
 
 ### Cross-compilation
 
-See the CI configuration for examples.
+See CMake toolchain files in the `cmake/toolchains` directory.
+
+For example, this targets Windows x64 on Linux with POSIX threads:
+
+```sh
+cmake -G Ninja -B build -S . -D CMAKE_TOOLCHAIN_FILE=cmake/toolchains/x86_64-w64-mingw32.cmake -D WEBVIEW_TOOLCHAIN_EXECUTABLE_SUFFIX=-posix
+cmake --build build
+```
 
 ## Limitations
 
@@ -401,7 +354,7 @@ Code is distributed under MIT license, feel free to use it in your proprietary p
 
 [macos-app-bundle]:  https://developer.apple.com/library/archive/documentation/CoreFoundation/Conceptual/CFBundles/BundleTypes/BundleTypes.html
 [examples]:          https://github.com/webview/webview/tree/master/examples
-[gtk]:               https://docs.gtk.org/gtk3/
+[gtk]:               https://gtk.org/
 [issues]:            https://github.com/webview/docs/issues
 [issues-new]:        https://github.com/webview/webview/issues/new
 [webkit]:            https://webkit.org/
